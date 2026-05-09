@@ -284,7 +284,16 @@ export default function LiveSessionPage() {
         <button
           type="button"
           aria-label="Maximize"
-          className="h-10 w-10 rounded-lg bg-[#0a7a90] text-white flex items-center justify-center"
+          title="Toggle fullscreen"
+          onClick={() => {
+            if (typeof document === "undefined") return;
+            if (document.fullscreenElement) {
+              document.exitFullscreen?.().catch(() => {});
+            } else {
+              document.documentElement.requestFullscreen?.().catch(() => {});
+            }
+          }}
+          className="h-10 w-10 rounded-lg bg-[#0a7a90] text-white flex items-center justify-center hover:bg-[#076377]"
         >
           <MaximizeIcon size={16} />
         </button>

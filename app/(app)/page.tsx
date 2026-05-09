@@ -497,7 +497,7 @@ export default function DashboardHome() {
               down
             />
             <PerfCell
-              value={`${data?.stats.completedSessions ? Math.min(96, 80 + Math.floor(Math.random() * 15)) : 96}%`}
+              value={`${Math.round(data?.stats.sessionCompletion ?? 0)}%`}
               label="Session Completion"
               icon={<ZapIcon size={20} />}
               hint="2% vs last week"

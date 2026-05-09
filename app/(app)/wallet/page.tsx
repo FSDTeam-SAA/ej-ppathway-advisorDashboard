@@ -53,6 +53,9 @@ export default function WalletPage() {
   const [amount, setAmount] = useState("");
   const [withdrawing, setWithdrawing] = useState(false);
 
+  const [confirmBulk, setConfirmBulk] = useState(false);
+  const [bulkLoading, setBulkLoading] = useState(false);
+
   const loadOverview = async () => {
     setLoadingOverview(true);
     try {
@@ -137,6 +140,77 @@ export default function WalletPage() {
     } finally {
       setDelLoading(false);
     }
+  };
+
+  const onBulkDelete = async () => {
+    if (selected.size === 0) return;
+    const ids = Array.from(selected);
+    const base =
+      tab === "earnings"
+        ? "/wallet/advisor/earnings"
+        : "/wallet/advisor/withdrawals";
+    setBulkLoading(true);
+    try {
+      const results = await Promise.allSettled(
+        ids.map((id) => api.delete(`${base}/${id}`))
+      );
+      const failed = results.filter((r) => r.status === "rejected").length;
+      const ok = results.length - failed;
+      if (ok > 0) toast.success(`${ok} removed from history`);
+      if (failed > 0) toast.error(`${failed} could not be removed`);
+      setConfirmBulk(false);
+      setSelected(new Set());
+      loadTab();
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Bulk delete failed");
+    } finally {
+      setBulkLoading(false);
+    }
+  };
+
+  const downloadInvoice = (t: TransactionDoc) => {
+    const advisorName = user?.name || "Advisor";
+    const id = `INV-${t._id.slice(-6).toUpperCase()}`;
+    const date = fmtDateTime(t.createdAt);
+    const amount = fmtCurrency(t.amount);
+    const html = `<!doctype html>
+<html><head><meta charset="utf-8"><title>${id}</title>
+<style>
+body{font-family:Arial,Helvetica,sans-serif;color:#0f172a;padding:32px;max-width:720px;margin:auto}
+h1{margin:0 0 4px 0;font-size:24px}
+.muted{color:#64748b;font-size:12px}
+.box{border:1px solid #e2e8f0;border-radius:12px;padding:20px;margin-top:24px}
+table{width:100%;border-collapse:collapse;margin-top:16px}
+td{padding:8px 0;font-size:14px}
+td.l{color:#64748b;width:40%}
+td.r{font-weight:600;text-align:right}
+.total{border-top:1px solid #e2e8f0;font-size:16px;color:#dc2626}
+</style></head>
+<body>
+<h1>Withdrawal Invoice</h1>
+<div class="muted">${id} &middot; ${date}</div>
+<div class="box">
+  <table>
+    <tr><td class="l">Advisor</td><td class="r">${advisorName}</td></tr>
+    <tr><td class="l">Transaction ID</td><td class="r">${t._id}</td></tr>
+    <tr><td class="l">Type</td><td class="r">Withdrawal</td></tr>
+    <tr><td class="l">Method</td><td class="r">Stripe</td></tr>
+    <tr><td class="l">Status</td><td class="r">${t.withdrawalStatus || t.status || "—"}</td></tr>
+    <tr><td class="l">Date</td><td class="r">${date}</td></tr>
+    <tr class="total"><td class="l">Amount</td><td class="r">- ${amount}</td></tr>
+  </table>
+</div>
+<div class="muted" style="margin-top:24px">Prophetic Pathway &middot; Generated ${new Date().toLocaleString()}</div>
+</body></html>`;
+    const blob = new Blob([html], { type: "text/html" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${id}.html`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
   };
 
   const toggleSelect = (id: string) => {
@@ -363,6 +437,9 @@ export default function WalletPage() {
             </div>
             <button
               type="button"
+              onClick={() => setConfirmBulk(true)}
+              aria-label="Remove selected from history"
+              title="Remove selected from history"
               className="h-9 w-9 rounded-full bg-red-50 text-red-600 flex items-center justify-center hover:bg-red-100"
             >
               <TrashIcon size={16} />
@@ -509,6 +586,7 @@ export default function WalletPage() {
                           {tab === "earnings" ? null : (
                             <button
                               type="button"
+                              onClick={() => downloadInvoice(t)}
                               className="text-[#0a7a90] hover:underline inline-flex items-center gap-1 text-xs font-semibold"
                             >
                               Download invoice
@@ -563,6 +641,17 @@ export default function WalletPage() {
         confirmText="Delete"
         danger
         loading={delLoading}
+      />
+
+      <ConfirmDialog
+        open={confirmBulk}
+        onClose={() => setConfirmBulk(false)}
+        onConfirm={onBulkDelete}
+        title={`Remove ${selected.size} record${selected.size === 1 ? "" : "s"}?`}
+        description="The selected records will no longer appear in your history."
+        confirmText="Remove"
+        danger
+        loading={bulkLoading}
       />
 
       <Modal open={showWithdraw} onClose={() => setShowWithdraw(false)} hideClose size="sm">

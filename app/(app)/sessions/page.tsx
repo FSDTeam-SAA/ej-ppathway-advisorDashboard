@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { api, ApiError } from "../../lib/api";
 import { useToast } from "../../lib/toast";
 import {
@@ -66,6 +66,15 @@ export default function SessionsPage() {
   const [confirmCancel, setConfirmCancel] = useState<SessionDoc | null>(null);
   const [cancelReason, setCancelReason] = useState("");
   const [cancelLoading, setCancelLoading] = useState(false);
+
+  const [confirmBulk, setConfirmBulk] = useState(false);
+  const [bulkLoading, setBulkLoading] = useState(false);
+
+  const tableRef = useRef<HTMLDivElement | null>(null);
+
+  const scrollToTable = () => {
+    tableRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
 
   // Counts + upcoming overview
   useEffect(() => {
@@ -174,6 +183,44 @@ export default function SessionsPage() {
     }
   };
 
+  const onBulkCancel = async () => {
+    if (selected.size === 0) return;
+    const ids = Array.from(selected);
+    setBulkLoading(true);
+    try {
+      const results = await Promise.allSettled(
+        ids.map((id) =>
+          api.post(`/sessions/${id}/cancel`, {
+            reason: "Bulk cancellation by advisor",
+          })
+        )
+      );
+      const failed = results.filter((r) => r.status === "rejected").length;
+      const ok = results.length - failed;
+      if (ok > 0) toast.success(`${ok} session${ok === 1 ? "" : "s"} cancelled`);
+      if (failed > 0) toast.error(`${failed} could not be cancelled`);
+      setConfirmBulk(false);
+      setSelected(new Set());
+      // refetch current tab
+      const r = await api.get<SessionDoc[]>("/sessions/mine/advisor", {
+        tab: activeTab,
+        page,
+        limit,
+      });
+      setItems(r.data || []);
+      setTotal(r.meta?.total || 0);
+      setCounts((c) => ({
+        ...c,
+        live: Math.max(0, c.live - ok),
+        cancelled: c.cancelled + ok,
+      }));
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Bulk cancel failed");
+    } finally {
+      setBulkLoading(false);
+    }
+  };
+
   const totalPages = useMemo(
     () => Math.max(1, Math.ceil(total / limit)),
     [total]
@@ -221,7 +268,15 @@ export default function SessionsPage() {
         <div className="bg-white rounded-2xl border border-slate-200 p-5">
           <div className="flex items-center justify-between mb-4">
             <h3 className="font-semibold text-slate-900">Sessions Overview</h3>
-            <button className="text-xs text-[#0a7a90] font-semibold hover:underline">
+            <button
+              type="button"
+              onClick={() => {
+                setActiveTab("live");
+                setPage(1);
+                scrollToTable();
+              }}
+              className="text-xs text-[#0a7a90] font-semibold hover:underline"
+            >
               View All
             </button>
           </div>
@@ -333,7 +388,7 @@ export default function SessionsPage() {
         })}
       </div>
 
-      <div className="bg-white rounded-2xl border border-slate-200 p-5">
+      <div ref={tableRef} className="bg-white rounded-2xl border border-slate-200 p-5">
         {selected.size > 0 ? (
           <div className="flex items-center justify-between mb-3">
             <div className="text-sm">
@@ -346,12 +401,17 @@ export default function SessionsPage() {
                 Deselect all
               </button>
             </div>
-            <button
-              type="button"
-              className="h-9 w-9 rounded-full bg-red-50 text-red-600 flex items-center justify-center hover:bg-red-100"
-            >
-              <TrashIcon size={16} />
-            </button>
+            {activeTab === "live" ? (
+              <button
+                type="button"
+                onClick={() => setConfirmBulk(true)}
+                aria-label="Cancel selected sessions"
+                title="Cancel selected sessions"
+                className="h-9 w-9 rounded-full bg-red-50 text-red-600 flex items-center justify-center hover:bg-red-100"
+              >
+                <TrashIcon size={16} />
+              </button>
+            ) : null}
           </div>
         ) : null}
 
@@ -458,12 +518,18 @@ export default function SessionsPage() {
                             {fmtCurrency(s.advisorPayout || s.chargedAmount)}
                           </td>
                           <td className="px-3 py-3">
-                            <div className="flex items-center gap-1 text-amber-500">
-                              <StarIcon size={14} filled />
-                              <span className="text-slate-900 font-semibold">
-                                5.0
+                            {typeof s.rating === "number" ? (
+                              <div className="flex items-center gap-1 text-amber-500">
+                                <StarIcon size={14} filled />
+                                <span className="text-slate-900 font-semibold">
+                                  {s.rating.toFixed(1)}
+                                </span>
+                              </div>
+                            ) : (
+                              <span className="text-slate-400 text-xs">
+                                Not rated
                               </span>
-                            </div>
+                            )}
                           </td>
                         </>
                       )}
@@ -537,6 +603,18 @@ export default function SessionsPage() {
           </div>
         </div>
       </div>
+
+      <ConfirmDialog
+        open={confirmBulk}
+        onClose={() => setConfirmBulk(false)}
+        onConfirm={onBulkCancel}
+        title={`Cancel ${selected.size} session${selected.size === 1 ? "" : "s"}?`}
+        description="The selected sessions will be cancelled. This action cannot be undone."
+        confirmText="Cancel sessions"
+        cancelText="Not now"
+        danger
+        loading={bulkLoading}
+      />
 
       <ConfirmDialog
         open={!!confirmCancel}

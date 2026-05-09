@@ -118,6 +118,7 @@ export type SessionDoc = {
   tipAmount?: number;
   advisorNotes?: string;
   review?: string;
+  rating?: number;
   createdAt?: string;
   updatedAt?: string;
 };

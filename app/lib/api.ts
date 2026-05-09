@@ -34,6 +34,11 @@ export const getAccessToken = (): string | null => {
   return localStorage.getItem(ACCESS_TOKEN_KEY);
 };
 
+export const getRefreshToken = (): string | null => {
+  if (typeof window === "undefined") return null;
+  return localStorage.getItem(REFRESH_TOKEN_KEY);
+};
+
 export const setAuth = (
   accessToken: string,
   refreshToken: string,
@@ -43,6 +48,12 @@ export const setAuth = (
   localStorage.setItem(ACCESS_TOKEN_KEY, accessToken);
   localStorage.setItem(REFRESH_TOKEN_KEY, refreshToken);
   localStorage.setItem(USER_KEY, JSON.stringify(user));
+};
+
+export const setTokens = (accessToken: string, refreshToken: string) => {
+  if (typeof window === "undefined") return;
+  localStorage.setItem(ACCESS_TOKEN_KEY, accessToken);
+  localStorage.setItem(REFRESH_TOKEN_KEY, refreshToken);
 };
 
 export const clearAuth = () => {
@@ -85,6 +96,70 @@ const buildQuery = (
   return s ? `?${s}` : "";
 };
 
+let refreshPromise: Promise<string | null> | null = null;
+
+const tryRefreshAccessToken = async (): Promise<string | null> => {
+  if (refreshPromise) return refreshPromise;
+  const refresh = getRefreshToken();
+  if (!refresh) return null;
+
+  refreshPromise = (async () => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/auth/refresh`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ refreshToken: refresh }),
+      });
+      if (!res.ok) return null;
+      const json = (await res.json()) as ApiEnvelope<{
+        accessToken: string;
+        refreshToken: string;
+      }>;
+      if (!json.success || !json.data?.accessToken) return null;
+      setTokens(json.data.accessToken, json.data.refreshToken || refresh);
+      return json.data.accessToken;
+    } catch {
+      return null;
+    } finally {
+      refreshPromise = null;
+    }
+  })();
+
+  return refreshPromise;
+};
+
+const redirectToLogin = () => {
+  if (typeof window === "undefined") return;
+  const path = window.location.pathname;
+  if (
+    !path.startsWith("/login") &&
+    !path.startsWith("/signup") &&
+    !path.startsWith("/verify") &&
+    !path.startsWith("/forgot") &&
+    !path.startsWith("/reset")
+  ) {
+    window.location.href = "/login";
+  }
+};
+
+const performFetch = async (
+  url: string,
+  finalHeaders: Record<string, string>,
+  method: string,
+  body: unknown,
+  isFormData: boolean
+) =>
+  fetch(url, {
+    method,
+    headers: finalHeaders,
+    body:
+      body === undefined
+        ? undefined
+        : isFormData
+          ? (body as FormData)
+          : JSON.stringify(body),
+  });
+
 export async function apiRequest<T = unknown>(
   path: string,
   opts: RequestOptions = {}
@@ -100,25 +175,40 @@ export async function apiRequest<T = unknown>(
 
   const url = `${API_BASE_URL}${path}${buildQuery(query)}`;
 
-  const finalHeaders: Record<string, string> = { ...headers };
-  if (!isFormData) {
-    finalHeaders["Content-Type"] = "application/json";
-  }
-  if (!skipAuth) {
-    const token = getAccessToken();
-    if (token) finalHeaders["Authorization"] = `Bearer ${token}`;
-  }
+  const buildHeaders = (token: string | null) => {
+    const h: Record<string, string> = { ...headers };
+    if (!isFormData) h["Content-Type"] = "application/json";
+    if (!skipAuth && token) h["Authorization"] = `Bearer ${token}`;
+    return h;
+  };
 
-  const res = await fetch(url, {
+  let res = await performFetch(
+    url,
+    buildHeaders(skipAuth ? null : getAccessToken()),
     method,
-    headers: finalHeaders,
-    body:
-      body === undefined
-        ? undefined
-        : isFormData
-          ? (body as FormData)
-          : JSON.stringify(body),
-  });
+    body,
+    isFormData
+  );
+
+  // On 401, try a refresh + single retry. Skip for explicit-no-auth requests
+  // and for the refresh endpoint itself to avoid recursion.
+  if (
+    res.status === 401 &&
+    !skipAuth &&
+    !path.startsWith("/auth/refresh") &&
+    getRefreshToken()
+  ) {
+    const newToken = await tryRefreshAccessToken();
+    if (newToken) {
+      res = await performFetch(
+        url,
+        buildHeaders(newToken),
+        method,
+        body,
+        isFormData
+      );
+    }
+  }
 
   let json: ApiEnvelope<T>;
   try {
@@ -129,11 +219,9 @@ export async function apiRequest<T = unknown>(
 
   if (!res.ok || json.success === false) {
     const msg = json?.message || `Request failed (${res.status})`;
-    if (res.status === 401) {
+    if (res.status === 401 && !skipAuth) {
       clearAuth();
-      if (typeof window !== "undefined" && !window.location.pathname.startsWith("/login") && !window.location.pathname.startsWith("/signup") && !window.location.pathname.startsWith("/verify") && !window.location.pathname.startsWith("/forgot")) {
-        window.location.href = "/login";
-      }
+      redirectToLogin();
     }
     throw new ApiError(msg, res.status, json);
   }

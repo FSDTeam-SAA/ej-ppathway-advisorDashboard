@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation";
 import { api, ApiError } from "../lib/api";
 import { useToast } from "../lib/toast";
 import { Button } from "../components/ui/Button";
-import { Input } from "../components/ui/Input";
 import { AuthShell } from "../components/AuthShell";
 import {
   EyeIcon,
@@ -15,6 +14,36 @@ import {
   UserIcon,
   PhoneIcon,
 } from "../components/Icons";
+import type { ReactNode } from "react";
+
+type IconedInputProps = React.InputHTMLAttributes<HTMLInputElement> & {
+  leftIcon: ReactNode;
+  rightIcon?: ReactNode;
+};
+
+function PillInput({
+  leftIcon,
+  rightIcon,
+  className = "",
+  ...rest
+}: IconedInputProps) {
+  return (
+    <div className="relative">
+      <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none">
+        {leftIcon}
+      </span>
+      <input
+        {...rest}
+        className={`w-full h-13 pl-12 ${rightIcon ? "pr-12" : "pr-4"} rounded-xl bg-white text-slate-900 placeholder:text-slate-400 border border-transparent shadow-sm focus:border-[#0a7a90] focus:outline-none focus:ring-2 focus:ring-[#0a7a90]/20 transition-colors ${className}`}
+      />
+      {rightIcon ? (
+        <span className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400">
+          {rightIcon}
+        </span>
+      ) : null}
+    </div>
+  );
+}
 
 export default function SignupPage() {
   const router = useRouter();
@@ -56,6 +85,7 @@ export default function SignupPage() {
 
   return (
     <AuthShell
+      bgImage="/login.png"
       title="Become an Advisor"
       subtitle="Create your account and start guiding clients"
       bottomLink={{
@@ -65,37 +95,33 @@ export default function SignupPage() {
       }}
     >
       <form onSubmit={onSubmit} className="space-y-4">
-        <Input
-          label="Full Name"
+        <PillInput
           autoComplete="name"
-          placeholder="John Doe"
+          placeholder="Full Name"
           value={name}
           onChange={(e) => setName(e.target.value)}
           leftIcon={<UserIcon size={18} />}
           required
         />
-        <Input
-          label="Email"
+        <PillInput
           type="email"
           autoComplete="email"
-          placeholder="advisor@example.com"
+          placeholder="Email"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           leftIcon={<MailIcon size={18} />}
           required
         />
-        <Input
-          label="Phone Number"
+        <PillInput
           type="tel"
-          placeholder="+1 (44) 7928 000000"
+          placeholder="Phone Number"
           value={phoneNumber}
           onChange={(e) => setPhone(e.target.value)}
           leftIcon={<PhoneIcon size={18} />}
         />
-        <Input
-          label="Password"
+        <PillInput
           type={showPwd ? "text" : "password"}
-          placeholder="••••••••"
+          placeholder="Password"
           value={password}
           onChange={(e) => setPassword(e.target.value)}
           leftIcon={<LockIcon size={18} />}
@@ -104,23 +130,27 @@ export default function SignupPage() {
               type="button"
               onClick={() => setShowPwd((s) => !s)}
               aria-label="toggle password"
-              className="text-slate-500 hover:text-slate-800"
+              className="text-slate-400 hover:text-slate-700"
             >
               {showPwd ? <EyeOffIcon size={18} /> : <EyeIcon size={18} />}
             </button>
           }
           required
         />
-        <Input
-          label="Confirm Password"
+        <PillInput
           type={showPwd ? "text" : "password"}
-          placeholder="••••••••"
+          placeholder="Confirm Password"
           value={confirmPassword}
           onChange={(e) => setConfirm(e.target.value)}
           leftIcon={<LockIcon size={18} />}
           required
         />
-        <Button type="submit" loading={submitting} className="w-full" size="lg">
+        <Button
+          type="submit"
+          loading={submitting}
+          className="w-full mt-2"
+          size="lg"
+        >
           Create Account
         </Button>
       </form>

@@ -9,6 +9,8 @@ import { Button } from "../components/ui/Button";
 import { AuthShell } from "../components/AuthShell";
 import type { AdvisorUser } from "../lib/types";
 
+const OTP_LENGTH = 6;
+
 export default function VerifyPage() {
   return (
     <Suspense fallback={null}>
@@ -25,7 +27,9 @@ function VerifyInner() {
   const email = params?.get("email") || "";
   const purpose = params?.get("purpose") || "verify";
 
-  const [code, setCode] = useState<string[]>(["", "", "", ""]);
+  const [code, setCode] = useState<string[]>(() =>
+    Array(OTP_LENGTH).fill("")
+  );
   const refs = useRef<(HTMLInputElement | null)[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [resending, setResending] = useState(false);
@@ -44,7 +48,7 @@ function VerifyInner() {
       next[i] = cleaned;
       return next;
     });
-    if (cleaned && i < 3) refs.current[i + 1]?.focus();
+    if (cleaned && i < OTP_LENGTH - 1) refs.current[i + 1]?.focus();
   };
 
   const onKeyDown = (i: number, e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -54,19 +58,22 @@ function VerifyInner() {
   };
 
   const onPaste = (e: React.ClipboardEvent<HTMLInputElement>) => {
-    const text = e.clipboardData.getData("text").replace(/\D/g, "").slice(0, 4);
-    if (text.length === 4) {
+    const text = e.clipboardData
+      .getData("text")
+      .replace(/\D/g, "")
+      .slice(0, OTP_LENGTH);
+    if (text.length === OTP_LENGTH) {
       e.preventDefault();
       setCode(text.split(""));
-      refs.current[3]?.focus();
+      refs.current[OTP_LENGTH - 1]?.focus();
     }
   };
 
   const onSubmit = async (e: FormEvent) => {
     e.preventDefault();
     const otp = code.join("");
-    if (otp.length !== 4) {
-      toast.error("Enter the 4-digit code");
+    if (otp.length !== OTP_LENGTH) {
+      toast.error(`Enter the ${OTP_LENGTH}-digit code`);
       return;
     }
     setSubmitting(true);
@@ -123,12 +130,13 @@ function VerifyInner() {
 
   return (
     <AuthShell
-      title="Verify Email"
-      subtitle={`We've sent a 4-digit code to ${email || "your email"}`}
+      bgImage="/otp.png"
+      title="Otp Verification"
+      subtitle="Please check your email and enter the 6 digit verification code to continue. The code will expire shortly for security reasons."
     >
       <form onSubmit={onSubmit} className="space-y-6">
-        <div className="flex justify-center gap-3">
-          {[0, 1, 2, 3].map((i) => (
+        <div className="flex justify-between gap-2 sm:gap-3">
+          {Array.from({ length: OTP_LENGTH }).map((_, i) => (
             <input
               key={i}
               ref={(el) => {
@@ -141,13 +149,13 @@ function VerifyInner() {
               onChange={(e) => setDigit(i, e.target.value)}
               onKeyDown={(e) => onKeyDown(i, e)}
               onPaste={onPaste}
-              className="w-14 h-14 text-center text-2xl font-bold rounded-lg border-2 border-slate-200 focus:border-[#0a7a90] focus:outline-none focus:ring-2 focus:ring-[#0a7a90]/20"
+              className="w-12 h-14 sm:w-14 sm:h-16 text-center text-xl sm:text-2xl font-semibold rounded-xl bg-white border border-slate-200 text-slate-900 focus:border-[#0a7a90] focus:outline-none focus:ring-2 focus:ring-[#0a7a90]/20"
             />
           ))}
         </div>
 
         <Button type="submit" loading={submitting} className="w-full" size="lg">
-          Verify
+          Verify Now
         </Button>
 
         <div className="text-sm text-center text-slate-500">

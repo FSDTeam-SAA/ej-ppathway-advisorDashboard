@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation";
 import { api, ApiError } from "../lib/api";
 import { useToast } from "../lib/toast";
 import { Button } from "../components/ui/Button";
-import { Input } from "../components/ui/Input";
 import { AuthShell } from "../components/AuthShell";
 import { MailIcon } from "../components/Icons";
 
@@ -36,8 +35,9 @@ export default function ForgotPage() {
 
   return (
     <AuthShell
-      title="Forgot Password"
-      subtitle="Enter your email and we'll send a reset code"
+      bgImage="/forgot.png"
+      title="Forgot your password?"
+      subtitle="Enter your email to receive the OTP"
       bottomLink={{
         href: "/login",
         text: "Remembered your password?",
@@ -45,18 +45,29 @@ export default function ForgotPage() {
       }}
     >
       <form onSubmit={onSubmit} className="space-y-4">
-        <Input
-          label="Email"
-          type="email"
-          autoComplete="email"
-          placeholder="advisor@example.com"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          leftIcon={<MailIcon size={18} />}
-          required
-        />
-        <Button type="submit" loading={submitting} className="w-full" size="lg">
-          Send Code
+        <div className="relative">
+          <MailIcon
+            size={18}
+            className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none"
+          />
+          <input
+            type="email"
+            autoComplete="email"
+            placeholder="Email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            required
+            className="w-full h-13 pl-12 pr-4 rounded-xl bg-white text-slate-900 placeholder:text-slate-400 border border-transparent shadow-sm focus:border-[#0a7a90] focus:outline-none focus:ring-2 focus:ring-[#0a7a90]/20 transition-colors"
+          />
+        </div>
+
+        <Button
+          type="submit"
+          loading={submitting}
+          className="w-full mt-2"
+          size="lg"
+        >
+          Continue
         </Button>
       </form>
     </AuthShell>

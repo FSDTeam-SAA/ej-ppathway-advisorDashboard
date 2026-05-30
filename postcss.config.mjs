@@ -1,7 +1,9 @@
-/** @type {import('postcss-load-config').Config} */
-const config = {
-  plugins: {
-    '@tailwindcss/postcss': {},
-  },
+import { createRequire } from 'module';
 
-export default config;
+const require = createRequire(import.meta.url);
+
+﻿export default {
+  plugins: {
+    "@tailwindcss/postcss": {},
+  },
+};

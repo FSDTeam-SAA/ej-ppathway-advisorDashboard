@@ -23,6 +23,7 @@ import {
   VideoIcon,
 } from "../../../components/Icons";
 import type { SessionDoc } from "../../../lib/types";
+import { getSessionReview, SessionReview } from "../../../components/SessionReview";
 
 const populated = (
   ref: SessionDoc["user"] | SessionDoc["advisor"]
@@ -32,17 +33,16 @@ const populated = (
 };
 
 const sessionDurationLabel = (session: SessionDoc) => {
-  if (session.status === "completed" && session.actualDurationSec && session.actualDurationSec > 0) {
-    return fmtDuration(session.actualDurationSec);
+  if (session.status === "completed") {
+    return actualDurationLabel(session);
   }
   return fmtMinutes(session.durationMinutes || 0);
 };
 
 const actualDurationLabel = (session: SessionDoc) => {
-  if (session.actualDurationSec && session.actualDurationSec > 0) {
+  if (typeof session.actualDurationSec === "number") {
     return fmtDuration(session.actualDurationSec);
   }
-  if (session.status === "completed") return "00:00:00";
   return "-";
 };
 
@@ -127,7 +127,7 @@ export default function SessionDetailPage() {
         : ChatIcon;
   const showTimeLeft = isSessionTimeActive(session, now);
   const typeLabel = sessionTypeLabel(session.type);
-  const hasReview = Boolean(session.review || session.rating);
+  const { ratingLabel } = getSessionReview(session);
   const showIssueDetails = Boolean(session.cancelReason || session.status === "cancelled" || session.status === "no_show" || session.status === "expired");
 
   return (
@@ -185,7 +185,7 @@ export default function SessionDetailPage() {
           <DetailCard label="Actual Duration" value={actualDurationLabel(session)} />
           <DetailCard
             label="Rating"
-            value={session.rating ? `${session.rating.toFixed(1)} / 5` : "Not rated"}
+            value={ratingLabel}
           />
           <DetailCard label="Started At" value={fmtDateTime(session.startedAt)} />
           <DetailCard label="Ended At" value={fmtDateTime(session.endedAt)} />
@@ -216,21 +216,7 @@ export default function SessionDetailPage() {
           </div>
         ) : null}
 
-        {hasReview ? (
-          <div className="mt-6 rounded-xl border border-slate-200 p-4">
-            <div className="flex items-center justify-between gap-3 flex-wrap">
-              <div>
-                <div className="text-xs text-slate-500 mb-1">Client Review</div>
-                <p className="text-sm text-slate-700 whitespace-pre-line">
-                  {session.review || "No written review submitted"}
-                </p>
-              </div>
-              <div className="text-sm font-semibold text-slate-900">
-                {session.rating ? `${session.rating.toFixed(1)} / 5` : "Not rated"}
-              </div>
-            </div>
-          </div>
-        ) : null}
+        <SessionReview session={session} />
 
         {showIssueDetails ? (
           <div className="mt-6 rounded-xl border border-amber-200 bg-amber-50 p-4">

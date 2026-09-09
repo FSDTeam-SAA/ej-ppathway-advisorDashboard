@@ -160,7 +160,7 @@ export type SessionDoc = {
   recordingConsented?: boolean;
   tipAmount?: number;
   advisorNotes?: string;
-  review?: string;
+  review?: string | { _id?: string; rating?: number; comment?: string } | null;
   rating?: number;
   createdAt?: string;
   updatedAt?: string;
@@ -206,6 +206,16 @@ export type TransactionDoc = {
   amount: number;
   amountUsd?: number;
   displayAmountUsd?: number;
+  payoutServiceUsd?: number;
+  payoutTipUsd?: number;
+  payoutSessionSeconds?: number;
+  platform?: "direct" | "ios" | "android" | "app_store" | "play_store" | "unknown";
+  grossUsd?: number;
+  commissionUsd?: number;
+  taxUsd?: number;
+  deductionsUsd?: number;
+  deductionPercent?: number;
+  netUsd?: number;
   currency?: string;
   description?: string;
   withdrawalStatus?: string;
@@ -272,6 +282,20 @@ export type EarningsOverview = {
   totalSessionMinutes: number;
   totalTipEarnedUsd: number;
   totalPaidUsd: number;
+  tipBreakdown?: TipEarningsBreakdown;
+};
+
+export type TipEarningsBreakdown = {
+  grossUsd: number;
+  commissionUsd: number;
+  taxUsd: number;
+  deductionsUsd: number;
+  deductionPercent: number;
+  netUsd: number;
+  count: number;
+  storeTipCount: number;
+  appStoreCount: number;
+  playStoreCount: number;
 };
 
 export type PayoutAccountInfo = {
@@ -293,11 +317,17 @@ export type PayoutAccountResponse = {
     city?: string;
   };
   summary: {
+    totalSessionSeconds: number;
     totalSessionMinutes: number;
     completedSessions: number;
     totalTipEarnedUsd: number;
     totalTips: number;
+    work: { unpaidSeconds: number; unpaidSessions: number; pendingServiceUsd: number; paidServiceUsd: number };
+    availableTipUsd: number;
+    pendingTipUsd: number;
+    paidTipUsd: number;
     totalPaidUsd: number;
+    tipBreakdown: TipEarningsBreakdown;
   };
 };
 

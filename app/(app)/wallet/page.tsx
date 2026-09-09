@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { api, ApiError } from "../../lib/api";
 import { useToast } from "../../lib/toast";
-import { fmtDateTime, fmtMinutes } from "../../lib/format";
+import { fmtDateTime, fmtDuration } from "../../lib/format";
 import { Avatar } from "../../components/ui/Avatar";
 import { Button } from "../../components/ui/Button";
 import { Input } from "../../components/ui/Input";
@@ -28,6 +28,7 @@ type SessionHistoryItem = {
   type?: "chat" | "call" | "video";
   durationMinutes?: number;
   actualDurationSec?: number;
+  servicePayout?: { txCode?: string; withdrawalStatus?: string } | null;
   scheduledFor?: string;
   endedAt?: string;
   createdAt?: string;
@@ -41,12 +42,25 @@ const formatUsd = (value?: number) =>
     Number(value || 0),
   );
 
+const formatPercent = (value?: number) =>
+  `${new Intl.NumberFormat("en-US", { maximumFractionDigits: 2 }).format(Number(value || 0))}%`;
+
+const tipPlatformLabel = (platform?: TransactionDoc["platform"]) => {
+  if (platform === "ios" || platform === "app_store") return "App Store";
+  if (platform === "android" || platform === "play_store") return "Play Store";
+  if (platform === "direct") return "Direct";
+  return "Store";
+};
+
 const serviceLabel = (type?: string) => {
   if (type === "call") return "Audio call";
   if (type === "video") return "Video call";
   if (type === "chat") return "Text chat";
   return "Service";
 };
+
+const actualDurationLabel = (seconds?: number) =>
+  typeof seconds === "number" && Number.isFinite(seconds) ? fmtDuration(seconds) : "—";
 
 export default function WalletPage() {
   const toast = useToast();
@@ -64,6 +78,7 @@ export default function WalletPage() {
   const limit = 8;
 
   const totalPages = useMemo(() => Math.max(1, Math.ceil(total / limit)), [total]);
+  const historyColumnCount = tab === "tips" ? 6 : 4;
   const method = payout?.account;
 
   const loadPayout = async () => {
@@ -149,7 +164,7 @@ export default function WalletPage() {
         <div className="rounded-2xl border border-slate-200 bg-white p-5 lg:col-span-2">
           <div className="mb-2 text-sm font-semibold text-slate-900">Payout process</div>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-            <ProcessStep title="1. Complete services" text="Your completed sessions are recorded in service history." />
+            <ProcessStep title="1. Complete services" text="Actual session time is recorded. Admins set payment amounts for completed work." />
             <ProcessStep title="2. Admin reviews" text="Admins review payout details and approve payable work." />
             <ProcessStep title="3. Receive payout" text="Approved payouts are sent to your connected destination." />
           </div>
@@ -159,14 +174,14 @@ export default function WalletPage() {
       {payout ? (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
           <SummaryCard
-            label="Total session minutes"
-            value={fmtMinutes(payout.summary.totalSessionMinutes)}
+            label="Total actual session time"
+            value={fmtDuration(payout.summary.totalSessionSeconds)}
             detail={`${payout.summary.completedSessions} completed sessions`}
           />
           <SummaryCard
             label="Net tips received"
             value={formatUsd(payout.summary.totalTipEarnedUsd)}
-            detail={`${payout.summary.totalTips} tips from users`}
+            detail={`${payout.summary.totalTips} tips · Gross ${formatUsd(payout.summary.tipBreakdown?.grossUsd)} · Store fees & tax -${formatUsd(payout.summary.tipBreakdown?.deductionsUsd)} (${formatPercent(payout.summary.tipBreakdown?.deductionPercent)})`}
           />
           <SummaryCard
             label="Total paid by admin"
@@ -176,6 +191,12 @@ export default function WalletPage() {
         </div>
       ) : null}
 
+      {payout && <div className="grid gap-4 sm:grid-cols-3">
+        <SummaryCard label="Unpaid session work" value={fmtDuration(payout.summary.work?.unpaidSeconds)} detail={`${payout.summary.work?.unpaidSessions || 0} sessions awaiting admin payment assignment`} />
+        <SummaryCard label="Session payments" value={formatUsd(payout.summary.work?.paidServiceUsd)} detail={`Paid · Pending ${formatUsd(payout.summary.work?.pendingServiceUsd)}`} />
+        <SummaryCard label="Tip payments" value={formatUsd(payout.summary.paidTipUsd)} detail={`Paid · Pending ${formatUsd(payout.summary.pendingTipUsd)} · Available ${formatUsd(payout.summary.availableTipUsd)}`} />
+      </div>}
+      <p className="text-xs text-slate-500">Tips use the payment provider&apos;s reported net proceeds after fees and tax; final store settlement may differ. Legacy credit tips have no App Store / Play Store deduction.</p>
       <div className="rounded-2xl border border-slate-200 bg-white p-5">
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
           <div className="grid w-full grid-cols-3 gap-1 rounded-lg bg-slate-100 p-1 text-sm min-[560px]:w-auto">
@@ -239,19 +260,21 @@ export default function WalletPage() {
         </div>
 
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[760px] text-sm">
+          <table className="w-full min-w-[900px] text-sm">
             <thead>
               <tr className="border-b border-slate-200 text-left text-xs uppercase text-slate-500">
                 {tab === "services" ? (
                   <>
                     <th className="px-4 py-3 font-semibold">Client</th>
                     <th className="px-4 py-3 font-semibold">Service</th>
-                    <th className="px-4 py-3 font-semibold">Duration</th>
+                    <th className="px-4 py-3 font-semibold">Actual Duration</th>
                     <th className="px-4 py-3 font-semibold">Date & Time</th>
                   </>
                 ) : tab === "tips" ? (
                   <>
                     <th className="px-4 py-3 font-semibold">User</th>
+                    <th className="px-4 py-3 font-semibold">Gross Tip</th>
+                    <th className="px-4 py-3 font-semibold">Store & Deductions</th>
                     <th className="px-4 py-3 font-semibold">Net Tip</th>
                     <th className="px-4 py-3 font-semibold">Session</th>
                     <th className="px-4 py-3 font-semibold">Date & Time</th>
@@ -270,7 +293,7 @@ export default function WalletPage() {
               {loading ? (
                 Array.from({ length: 5 }).map((_, row) => (
                   <tr key={row} className="border-b border-slate-100">
-                    {Array.from({ length: 4 }).map((__, col) => (
+                    {Array.from({ length: historyColumnCount }).map((__, col) => (
                       <td key={col} className="px-4 py-4">
                         <Skeleton className="h-3 w-full max-w-32" />
                       </td>
@@ -279,7 +302,7 @@ export default function WalletPage() {
                 ))
               ) : items.length === 0 ? (
                 <tr>
-                  <td colSpan={4} className="py-10 text-center text-slate-500">
+                  <td colSpan={historyColumnCount} className="py-10 text-center text-slate-500">
                     No records yet
                   </td>
                 </tr>
@@ -372,8 +395,11 @@ function ServiceRow({ item }: { item: SessionHistoryItem }) {
       <td className="px-4 py-3 text-slate-700">
         <div className="font-medium">{serviceLabel(item.type)}</div>
         {item.sessionCode ? <div className="text-xs text-slate-400">{item.sessionCode}</div> : null}
+        <div className="text-xs capitalize text-slate-500">{item.servicePayout ? `Payment: ${item.servicePayout.withdrawalStatus || "pending"} · ${item.servicePayout.txCode || ""}` : "Unpaid · awaiting admin assignment"}</div>
       </td>
-      <td className="px-4 py-3 font-semibold text-slate-700">{fmtMinutes(item.durationMinutes)}</td>
+      <td className="px-4 py-3 font-semibold text-slate-700">
+        {actualDurationLabel(item.actualDurationSec)}
+      </td>
       <td className="px-4 py-3 text-slate-600">
         {fmtDateTime(item.endedAt || item.scheduledFor || item.createdAt)}
       </td>
@@ -392,8 +418,17 @@ function TipRow({ item }: { item: TransactionDoc }) {
           <span className="font-medium text-slate-900">{user?.name || "User"}</span>
         </div>
       </td>
+      <td className="px-4 py-3 font-medium text-slate-700">
+        {formatUsd(item.grossUsd ?? item.displayAmountUsd)}
+      </td>
+      <td className="px-4 py-3 text-slate-600">
+        <div className="font-medium">{tipPlatformLabel(item.platform)}</div>
+        <div className="text-xs text-slate-400">
+          -{formatUsd(item.deductionsUsd)} ({formatPercent(item.deductionPercent)})
+        </div>
+      </td>
       <td className="px-4 py-3 font-semibold text-emerald-700">
-        {formatUsd(item.displayAmountUsd)}
+        {formatUsd(item.netUsd ?? item.displayAmountUsd)}
       </td>
       <td className="px-4 py-3 text-slate-600">
         <div>{session ? serviceLabel(session.type) : "Session"}</div>
@@ -409,7 +444,7 @@ function PayoutRow({ item }: { item: TransactionDoc }) {
     <tr className="border-b border-slate-100 last:border-0">
       <td className="px-4 py-3">
         <div className="font-semibold text-slate-900">{formatUsd(item.amountUsd ?? item.amount)}</div>
-        <div className="text-xs text-slate-400">{item.description || "Advisor payout"}</div>
+        <div className="text-xs text-slate-400">{item.payoutServiceUsd !== undefined ? `Sessions ${formatUsd(item.payoutServiceUsd)} · Tips ${formatUsd(item.payoutTipUsd)}` : item.description || "Legacy payout"}</div>
       </td>
       <td className="px-4 py-3 capitalize text-slate-600">
         {(item.withdrawalMethod || "Payout method").replace(/_/g, " ")}

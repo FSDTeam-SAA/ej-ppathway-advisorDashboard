@@ -40,14 +40,8 @@ const populated = (
   return ref;
 };
 
-const completedDurationLabel = (session: SessionDoc) => {
-  if (session.actualDurationSec && session.actualDurationSec > 0) {
-    return fmtDuration(session.actualDurationSec);
-  }
-  return session.durationMinutes
-    ? `${String(session.durationMinutes).padStart(2, "0")}:00`
-    : "—";
-};
+const completedDurationLabel = (session: SessionDoc) =>
+  typeof session.actualDurationSec === "number" ? fmtDuration(session.actualDurationSec) : "—";
 
 const typeIcon = (t: SessionType) => {
   if (t === "video") return <VideoIcon size={14} />;

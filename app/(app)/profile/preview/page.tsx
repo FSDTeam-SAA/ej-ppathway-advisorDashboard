@@ -140,7 +140,7 @@ export default function PreviewProfile() {
           <div className="bg-white rounded-2xl border border-slate-200 p-5">
             <h3 className="font-bold text-slate-900 mb-2">Basic Information</h3>
             <p className="text-sm text-slate-700 leading-relaxed whitespace-pre-line">
-              {profile.detailedDescription || profile.bio || "—"}
+              {profile.bio || profile.detailedDescription || "—"}
             </p>
           </div>
 

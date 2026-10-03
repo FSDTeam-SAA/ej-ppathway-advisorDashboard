@@ -9,7 +9,6 @@ import { api } from "../lib/api";
 import {
   DashboardIcon,
   BookingsIcon,
-  WalletIcon,
   SettingsIcon,
   BellIcon,
   ChevronDownIcon,
@@ -20,7 +19,6 @@ import {
   SessionsIcon,
   StarIcon,
   ChatIcon,
-  AwardIcon,
 } from "./Icons";
 import { Avatar } from "./ui/Avatar";
 
@@ -30,8 +28,6 @@ const NAV = [
   { href: "/sessions", label: "Sessions", icon: SessionsIcon },
   { href: "/availability", label: "Availability", icon: BookingsIcon },
   { href: "/profile?tab=reviews", label: "Reviews", icon: StarIcon },
-  { href: "/profile?tab=promotion", label: "Promotion Tools", icon: AwardIcon },
-  { href: "/wallet?tab=withdrawals", label: "Payouts", icon: WalletIcon },
   { href: "/notifications", label: "Notifications", icon: BellIcon, badge: "unread" },
   { href: "/settings", label: "Settings", icon: SettingsIcon },
   { href: "/support", label: "Support", icon: ChatIcon },

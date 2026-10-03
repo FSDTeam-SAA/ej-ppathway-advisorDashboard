@@ -195,7 +195,7 @@ function setDaySchedule(
 
 function tabFromQuery(value: string | null): TabKey {
   if (value === "reviews") return "performance";
-  if (value === "promotion") return "promotion";
+  // Promotion tools are temporarily unavailable; old links open My Profile.
   return "personal";
 }
 
@@ -364,6 +364,7 @@ function PersonalTab({
   const [uploading, setUploading] = useState(false);
   const [audioUploading, setAudioUploading] = useState(false);
   const [vidUploading, setVidUploading] = useState(false);
+  const [removing, setRemoving] = useState(false);
   const [photoCropFile, setPhotoCropFile] = useState<File | null>(null);
   const [photoCropPreview, setPhotoCropPreview] = useState("");
   const [photoCropZoom, setPhotoCropZoom] = useState(1);
@@ -460,6 +461,26 @@ function PersonalTab({
     }
   };
 
+  const removeMedia = async (field: "profilePhoto" | "audioMessageUrl" | "introVideoUrl") => {
+    setRemoving(true);
+    const patch: Record<string, string> = { [field]: "" };
+    // Older audio uploads were stored in the video field.
+    if (field === "audioMessageUrl" && p.introVideoUrl && isAudioMediaUrl(p.introVideoUrl)) {
+      patch.introVideoUrl = "";
+    }
+    try {
+      await api.patch("/advisor/profile", patch);
+      if (field === "profilePhoto") setU({ ...u, profilePhoto: "" });
+      else setP({ ...p, ...patch });
+      toast.success("Media removed");
+      onProfileUpdate();
+    } catch (e) {
+      toast.error(e instanceof ApiError ? e.message : "Could not remove media");
+    } finally {
+      setRemoving(false);
+    }
+  };
+
   const audioMessageUrl =
     p.audioMessageUrl || (p.introVideoUrl && isAudioMediaUrl(p.introVideoUrl) ? p.introVideoUrl : "");
   const introVideoUrl = p.introVideoUrl && !isAudioMediaUrl(p.introVideoUrl) ? p.introVideoUrl : "";
@@ -505,6 +526,11 @@ function PersonalTab({
               </div>
             </div>
           </div>
+          {u.profilePhoto && (
+            <Button variant="outline" size="sm" className="mt-3 text-red-600" disabled={removing || uploading || audioUploading || vidUploading} onClick={() => removeMedia("profilePhoto")}>
+              <TrashIcon size={14} /> Remove Photo
+            </Button>
+          )}
           {photoCropPreview && (
             <PhotoCropModal
               preview={photoCropPreview}
@@ -536,6 +562,11 @@ function PersonalTab({
             <UploadIcon size={14} />
             Upload Audio Message
           </Button>
+          {audioMessageUrl && (
+            <Button variant="outline" size="sm" className="mt-3 text-red-600" disabled={removing || uploading || audioUploading || vidUploading} onClick={() => removeMedia("audioMessageUrl")}>
+              <TrashIcon size={14} /> Remove Audio Message
+            </Button>
+          )}
           <input
             ref={audioRef}
             type="file"
@@ -567,6 +598,11 @@ function PersonalTab({
             <UploadIcon size={14} />
             Upload Intro Video
           </Button>
+          {introVideoUrl && (
+            <Button variant="outline" size="sm" className="mt-3 text-red-600" disabled={removing || uploading || audioUploading || vidUploading} onClick={() => removeMedia("introVideoUrl")}>
+              <TrashIcon size={14} /> Remove Intro Video
+            </Button>
+          )}
           <input
             ref={videoRef}
             type="file"

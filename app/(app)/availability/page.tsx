@@ -198,6 +198,8 @@ export default function AvailabilityPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [user, setUser] = useState<AdvisorUser | null>(null);
+  const scheduleTimezone = user?.timezone || 'UTC';
+  const timezoneOptions = useMemo(() => ['UTC', ...Intl.supportedValuesOf('timeZone')], []);
   const [profile, setProfile] = useState<AdvisorProfile | null>(null);
   const [bookings, setBookings] = useState<SessionDoc[]>([]);
   const [bookingsLoading, setBookingsLoading] = useState(false);
@@ -224,6 +226,10 @@ export default function AvailabilityPage() {
         );
         if (!cancel && r.data) {
           setUser(r.data.user);
+          const localToday = zonedDateKey(new Date(), r.data.user.timezone || 'UTC');
+          setSelectedDate(localToday);
+          setViewMonth(monthStart(parseDateKey(localToday)));
+          setTimeOffDate(localToday);
           setProfile(normalizeProfile(r.data.profile));
         }
       } catch {
@@ -239,8 +245,9 @@ export default function AvailabilityPage() {
 
   useEffect(() => {
     let cancel = false;
-    const start = monthStart(viewMonth);
-    const end = new Date(viewMonth.getFullYear(), viewMonth.getMonth() + 1, 0, 23, 59, 59, 999);
+    // Include edge days in every timezone; bookings are grouped in schedule time below.
+    const start = new Date(Date.UTC(viewMonth.getFullYear(), viewMonth.getMonth(), -1));
+    const end = new Date(Date.UTC(viewMonth.getFullYear(), viewMonth.getMonth() + 1, 3));
     (async () => {
       setBookingsLoading(true);
       try {
@@ -289,11 +296,12 @@ export default function AvailabilityPage() {
     return baseSlots.filter((slot) => !available.has(slotKey(slot))).map(slotKey);
   };
   const isTimeOffSlotEditable = (key: string, slot: ScheduleSlot) => {
-    const today = dateKey(new Date());
+    const today = zonedDateKey(new Date(), scheduleTimezone);
     if (key > today) return true;
     if (key < today) return false;
     const now = new Date();
-    const currentMinutes = now.getHours() * 60 + now.getMinutes();
+    const parts = new Intl.DateTimeFormat('en', { timeZone: scheduleTimezone, hour: 'numeric', minute: 'numeric', hourCycle: 'h23' }).formatToParts(now);
+    const currentMinutes = Number(parts.find(p => p.type === 'hour')?.value) * 60 + Number(parts.find(p => p.type === 'minute')?.value);
     return toMinutes(slot.from) > currentMinutes;
   };
   const selectedRule = getAvailabilityRule(selectedDate);
@@ -316,7 +324,7 @@ export default function AvailabilityPage() {
       return dateKey(date);
     });
   }, [selectedDate]);
-  const todayKey = dateKey(new Date());
+  const todayKey = zonedDateKey(new Date(), scheduleTimezone);
   const editableWeekDates = selectedWeekDates.filter((key) => key >= todayKey);
   const fullEditableWeekHasOverrides =
     editableWeekDates.length > 0 && editableWeekDates.every((key) => hasDateOverride(key));
@@ -338,11 +346,11 @@ export default function AvailabilityPage() {
     const map = new Map<string, number>();
     for (const booking of bookings) {
       if (!booking.scheduledFor) continue;
-      const key = dateKey(new Date(booking.scheduledFor));
+      const key = zonedDateKey(new Date(booking.scheduledFor), scheduleTimezone);
       map.set(key, (map.get(key) || 0) + 1);
     }
     return map;
-  }, [bookings]);
+  }, [bookings, scheduleTimezone]);
 
   const setDateRule = (date: string, rule: DateAvailability) => {
     if (!profile) return;
@@ -533,6 +541,8 @@ export default function AvailabilityPage() {
 
   const save = async () => {
     if (!profile || !user) return;
+    try { new Intl.DateTimeFormat('en', { timeZone: scheduleTimezone }); }
+    catch { toast.error('Please choose a valid schedule timezone'); return; }
     setSaving(true);
     try {
       const normalized = normalizeProfile(profile);
@@ -541,7 +551,7 @@ export default function AvailabilityPage() {
         phone: user.phone,
         country: user.country,
         city: user.city,
-        timezone: user.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
+        timezone: scheduleTimezone,
         professionalTitle: profile.professionalTitle,
         bio: profile.bio,
         yearsOfExperience: profile.yearsOfExperience,
@@ -808,6 +818,14 @@ export default function AvailabilityPage() {
           <p className="mt-1 text-sm text-slate-500">
             Set your availability so clients can book sessions with you.
           </p>
+          <div className="mt-3 flex flex-wrap items-center gap-2 text-sm">
+            <label htmlFor="schedule-timezone">Schedule timezone</label>
+            <select id="schedule-timezone" value={scheduleTimezone} onChange={e => setUser(current => current ? { ...current, timezone: e.target.value } : current)} className="rounded-lg border border-slate-200 bg-white px-3 py-2">
+              {[...new Set([scheduleTimezone, ...timezoneOptions])].map(zone => <option key={zone} value={zone}>{zone}</option>)}
+            </select>
+            <button type="button" className="text-[#0a7a90] underline" onClick={() => setUser(current => current ? { ...current, timezone: Intl.DateTimeFormat().resolvedOptions().timeZone } : current)}>Use device timezone</button>
+          </div>
+          <p className="mt-1 text-xs text-slate-500">Weekly hours and date overrides use this timezone. Save to apply. Existing bookings keep their scheduled instant.</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <div className="inline-flex h-11 items-center gap-3 rounded-lg bg-emerald-50 px-4 text-sm font-semibold text-emerald-700">
@@ -865,9 +883,9 @@ export default function AvailabilityPage() {
               <button
                 type="button"
                 onClick={() => {
-                  const now = new Date();
-                  setViewMonth(monthStart(now));
-                  setSelectedDate(dateKey(now));
+                  const today = zonedDateKey(new Date(), scheduleTimezone);
+                  setViewMonth(monthStart(parseDateKey(today)));
+                  setSelectedDate(today);
                 }}
                 className="h-8 rounded-md px-3 text-sm font-semibold text-slate-700 hover:bg-slate-50"
               >
@@ -1658,6 +1676,11 @@ function countTemplateSlots(schedule?: Record<string, DaySchedule>) {
     if (!day?.enabled) return total;
     return total + (day.slots?.length || (day.from && day.to ? 1 : 0));
   }, 0);
+}
+
+function zonedDateKey(date: Date, timezone: string) {
+  const parts = new Intl.DateTimeFormat('en', { timeZone: timezone, year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(date);
+  return ['year', 'month', 'day'].map(type => parts.find(p => p.type === type)?.value).join('-');
 }
 
 function formatDateLabel(key: string) {

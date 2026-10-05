@@ -266,7 +266,7 @@ export default function ProfilePage() {
         country: u.country,
         city: u.city,
         timezone:
-          u.timezone && u.timezone !== "UTC" ? u.timezone : browserTimezone,
+          u.timezone || browserTimezone,
         professionalTitle: p.professionalTitle,
         bio: p.bio,
         yearsOfExperience: p.yearsOfExperience,

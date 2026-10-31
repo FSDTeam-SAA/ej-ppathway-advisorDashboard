@@ -197,6 +197,7 @@ export default function AvailabilityPage() {
   const { refreshMe } = useAuth();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [convertingTimezone, setConvertingTimezone] = useState(false);
   const [user, setUser] = useState<AdvisorUser | null>(null);
   const scheduleTimezone = user?.timezone || 'UTC';
   const timezoneOptions = useMemo(() => ['UTC', ...Intl.supportedValuesOf('timeZone')], []);
@@ -540,7 +541,7 @@ export default function AvailabilityPage() {
   };
 
   const save = async () => {
-    if (!profile || !user) return;
+    if (!profile || !user || convertingTimezone) return;
     try { new Intl.DateTimeFormat('en', { timeZone: scheduleTimezone }); }
     catch { toast.error('Please choose a valid schedule timezone'); return; }
     setSaving(true);
@@ -552,6 +553,7 @@ export default function AvailabilityPage() {
         country: user.country,
         city: user.city,
         timezone: scheduleTimezone,
+        availabilityTimezone: scheduleTimezone,
         professionalTitle: profile.professionalTitle,
         bio: profile.bio,
         yearsOfExperience: profile.yearsOfExperience,
@@ -573,6 +575,27 @@ export default function AvailabilityPage() {
     } finally {
       setSaving(false);
     }
+  };
+
+  const changeTimezone = async (timezone: string) => {
+    if (!profile || !user || timezone === scheduleTimezone || convertingTimezone || saving) return;
+    setConvertingTimezone(true);
+    try {
+      const res = await api.post<Pick<AdvisorProfile, "weeklySchedule" | "dateAvailability" | "availabilityTemplates">>(
+        "/advisor/profile/availability-timezone-preview", {
+          fromTimezone: scheduleTimezone, toTimezone: timezone,
+          weeklySchedule: profile.weeklySchedule, dateAvailability: profile.dateAvailability,
+          availabilityTemplates: profile.availabilityTemplates,
+        });
+      if (!res.data) throw new Error("Timezone conversion was unavailable");
+      setProfile(current => current ? normalizeProfile({ ...current, ...res.data }) : current);
+      setUser(current => current ? { ...current, timezone } : current);
+      setApplySlotKeys([]);
+      setTimeOffSlotKeys([]);
+      toast.success("Times converted. Save to apply the new timezone.");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not convert availability");
+    } finally { setConvertingTimezone(false); }
   };
 
   const setOnlineStatus = async (next: boolean) => {
@@ -820,12 +843,12 @@ export default function AvailabilityPage() {
           </p>
           <div className="mt-3 flex flex-wrap items-center gap-2 text-sm">
             <label htmlFor="schedule-timezone">Schedule timezone</label>
-            <select id="schedule-timezone" value={scheduleTimezone} onChange={e => setUser(current => current ? { ...current, timezone: e.target.value } : current)} className="rounded-lg border border-slate-200 bg-white px-3 py-2">
+            <select id="schedule-timezone" value={scheduleTimezone} disabled={convertingTimezone || saving} onChange={e => void changeTimezone(e.target.value)} className="rounded-lg border border-slate-200 bg-white px-3 py-2">
               {[...new Set([scheduleTimezone, ...timezoneOptions])].map(zone => <option key={zone} value={zone}>{zone}</option>)}
             </select>
-            <button type="button" className="text-[#0a7a90] underline" onClick={() => setUser(current => current ? { ...current, timezone: Intl.DateTimeFormat().resolvedOptions().timeZone } : current)}>Use device timezone</button>
+            <button type="button" disabled={convertingTimezone || saving} className="text-[#0a7a90] underline" onClick={() => void changeTimezone(Intl.DateTimeFormat().resolvedOptions().timeZone)}>Use device timezone</button>
           </div>
-          <p className="mt-1 text-xs text-slate-500">Weekly hours and date overrides use this timezone. Save to apply. Existing bookings keep their scheduled instant.</p>
+          <p className="mt-1 text-xs text-slate-500">{convertingTimezone ? "Converting availability…" : "Changing timezone converts your hours and dated availability. Weekly hours follow the new local timezone after saving; existing bookings keep their scheduled instant."}</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <div className="inline-flex h-11 items-center gap-3 rounded-lg bg-emerald-50 px-4 text-sm font-semibold text-emerald-700">
@@ -1144,7 +1167,7 @@ export default function AvailabilityPage() {
           </div>
 
           <div className="sticky bottom-0 -mx-4 mt-5 bg-white px-4 pb-1 pt-3">
-            <Button onClick={save} loading={saving} className="w-full">
+            <Button onClick={save} loading={saving} disabled={convertingTimezone} className="w-full">
               Save Changes
             </Button>
           </div>

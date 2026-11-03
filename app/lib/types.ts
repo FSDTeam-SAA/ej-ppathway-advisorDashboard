@@ -209,7 +209,7 @@ export type TransactionDoc = {
   payoutServiceUsd?: number;
   payoutTipUsd?: number;
   payoutSessionSeconds?: number;
-  platform?: "direct" | "ios" | "android" | "app_store" | "play_store" | "unknown";
+  platform?: "direct" | "ios" | "android" | "app_store" | "play_store" | "flutterwave" | "unknown";
   grossUsd?: number;
   commissionUsd?: number;
   taxUsd?: number;

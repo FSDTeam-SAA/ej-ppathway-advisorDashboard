@@ -49,6 +49,7 @@ const tipPlatformLabel = (platform?: TransactionDoc["platform"]) => {
   if (platform === "ios" || platform === "app_store") return "App Store";
   if (platform === "android" || platform === "play_store") return "Play Store";
   if (platform === "direct") return "Direct";
+  if (platform === "flutterwave") return "Flutterwave";
   return "Store";
 };
 

@@ -37,6 +37,17 @@ const statusLabel = (s: LiveKitStatus): string => {
   }
 };
 
+// Advisor has started but the client has not connected yet. The room is open
+// and heartbeats report presence, but no timer runs and nothing is charged.
+const PRE_LIVE_STATUSES = ["pending", "consent", "waiting"];
+const isPreLive = (s: SessionDoc | null) =>
+  !!s && PRE_LIVE_STATUSES.includes(s.status) && !s.startedAt;
+
+const elapsedSince = (startedAt?: string) =>
+  startedAt
+    ? Math.max(0, Math.floor((Date.now() - new Date(startedAt).getTime()) / 1000))
+    : 0;
+
 const populated = (
   ref: SessionDoc["user"] | SessionDoc["advisor"]
 ): { _id: string; name: string; profilePhoto?: string } => {
@@ -88,19 +99,7 @@ export default function LiveSessionPage() {
     (async () => {
       try {
         const r = await api.get<SessionDoc>(`/sessions/${id}`);
-        if (!cancel) {
-          setSession(r.data || null);
-          if (r.data?.startedAt) {
-            setElapsed(
-              Math.max(
-                0,
-                Math.floor(
-                  (Date.now() - new Date(r.data.startedAt).getTime()) / 1000
-                )
-              )
-            );
-          }
-        }
+        if (!cancel) setSession(r.data || null);
 
         // For chat sessions, ensure chat exists
         if (r.data?.type === "chat") {
@@ -118,15 +117,21 @@ export default function LiveSessionPage() {
     };
   }, [id, toast]);
 
-  // Tick timer + heartbeat
+  // Timer runs only once both sides are connected (startedAt is set).
   useEffect(() => {
-    if (!session || session.status !== "live") return;
-    const t = setInterval(() => setElapsed((s) => s + 1), 1000);
+    if (!session || session.status !== "live" || !session.startedAt) return;
+    const startedAt = session.startedAt;
+    setElapsed(elapsedSince(startedAt));
+    const t = setInterval(() => setElapsed(elapsedSince(startedAt)), 1000);
     return () => clearInterval(t);
-  }, [session]);
+  }, [session?.status, session?.startedAt]);
 
+  // Heartbeat. Before go-live it is a presence ping (every few seconds) that
+  // lets the backend start the session once the client joins; after that it
+  // drives per-minute billing.
+  const preLive = isPreLive(session);
   useEffect(() => {
-    if (!session || session.status !== "live") return;
+    if (!session || (session.status !== "live" && !preLive)) return;
     let cancel = false;
     const beat = async () => {
       try {
@@ -146,14 +151,14 @@ export default function LiveSessionPage() {
         // ignore
       }
     };
-    const id1 = setInterval(beat, 30000);
+    const id1 = setInterval(beat, preLive ? 4000 : 30000);
     beat();
     return () => {
       cancel = true;
       clearInterval(id1);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [session?._id, session?.status]);
+  }, [session?._id, session?.status, preLive]);
 
   // Load chat messages
   useEffect(() => {
@@ -186,6 +191,12 @@ export default function LiveSessionPage() {
     if (!session) return;
     setEnding(true);
     try {
+      if (isPreLive(session)) {
+        // Client never connected: nothing billed, the booking stays open.
+        await api.post(`/sessions/${session._id}/end`).catch(() => {});
+        router.push("/sessions");
+        return;
+      }
       const r = await api.post<SessionDoc>(`/sessions/${session._id}/end`);
       if (r.data) {
         setSession(r.data);
@@ -201,6 +212,10 @@ export default function LiveSessionPage() {
 
   const onSendMessage = async () => {
     if (!chatId || (!draft.trim() && true)) return;
+    if (session?.status !== "live") {
+      toast.error("You can send messages once the client has joined.");
+      return;
+    }
     setSending(true);
     try {
       const r = await api.post<MessageDoc>(
@@ -253,10 +268,17 @@ export default function LiveSessionPage() {
           <div className="font-bold text-slate-900">{u.name}</div>
           <div className="text-xs text-slate-500 capitalize flex items-center gap-2">
             {session.type} Session
-            <span className="inline-flex items-center gap-1 text-emerald-600 font-medium">
-              <span className="h-2 w-2 rounded-full bg-emerald-500" />
-              live
-            </span>
+            {session.status === "live" ? (
+              <span className="inline-flex items-center gap-1 text-emerald-600 font-medium">
+                <span className="h-2 w-2 rounded-full bg-emerald-500" />
+                live
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1 text-amber-600 font-medium">
+                <span className="h-2 w-2 rounded-full bg-amber-400" />
+                waiting for client
+              </span>
+            )}
           </div>
         </div>
       </div>
@@ -297,6 +319,13 @@ export default function LiveSessionPage() {
     <div className="space-y-4">
       {Header}
 
+      {preLive && (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          Waiting for {u.name} to join. The session timer and the client&apos;s
+          credits start only once you are both connected.
+        </div>
+      )}
+
       {session.type === "chat" && (
         <ChatBody
           messages={messages}
@@ -314,7 +343,7 @@ export default function LiveSessionPage() {
           onEnd={onEnd}
           ending={ending}
           sessionId={session._id}
-          live={session.status === "live"}
+          live={session.status === "live" || preLive}
         />
       )}
 
@@ -325,7 +354,7 @@ export default function LiveSessionPage() {
           onEnd={onEnd}
           ending={ending}
           sessionId={session._id}
-          live={session.status === "live"}
+          live={session.status === "live" || preLive}
         />
       )}
 
